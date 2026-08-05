@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <RootNamespace>FileHost</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Lets the app register/run as a Windows Service and redirects logging to the Event Log when it does -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Compiled into the DLL rather than copied as a loose file next to the exe, so the
+         "no file found" page can never go missing from a deployment/publish step. -->
+    <EmbeddedResource Include="index.html">
+      <LogicalName>index.html</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,307 @@
+<!doctype html>
+<!--suppress ALL -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #000;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: Tahoma, "MS Sans Serif", sans-serif;
+    font-size: 16.5px;
+    color: #000;
+  }
+  .raised {
+    border-top: 1px solid #fff;
+    border-left: 1px solid #fff;
+    border-right: 1px solid #000;
+    border-bottom: 1px solid #000;
+    box-shadow: inset 1px 1px 0 #dfdfdf, inset -1px -1px 0 #808080;
+  }
+  .sunken {
+    border-top: 1px solid #000;
+    border-left: 1px solid #000;
+    border-right: 1px solid #fff;
+    border-bottom: 1px solid #fff;
+    box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #dfdfdf;
+  }
+  .window {
+    width: 570px;
+    max-width: min(570px, 96vw);
+    background: #c0c0c0;
+    padding: 3px;
+  }
+  .title-bar {
+    display: flex;
+    align-items: center;
+    height: 27px;
+    padding: 3px 3px 3px 6px;
+    background: linear-gradient(90deg, #000080, #1084d0);
+    color: #fff;
+    font-weight: bold;
+  }
+  .title-bar-icon {
+    width: 21px;
+    height: 21px;
+    margin-right: 6px;
+    flex: none;
+  }
+  .title-bar-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .title-bar-buttons {
+    display: flex;
+    gap: 3px;
+    flex: none;
+  }
+  .title-bar-button {
+    width: 24px;
+    height: 21px;
+    background: #c0c0c0;
+    color: #000;
+    font-weight: bold;
+    font-size: 15px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+  }
+  .body-area {
+    padding: 18px 15px 15px 15px;
+  }
+  .icon-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+    margin-bottom: 18px;
+  }
+  .icon-row svg {
+    flex: none;
+    margin-top: 3px;
+  }
+  .icon-row p {
+    margin: 0;
+    line-height: 1.4;
+  }
+  .open-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 24px;
+  }
+  .open-row label {
+    flex: none;
+  }
+  .open-field {
+    flex: 1;
+    display: flex;
+    background: #fff;
+  }
+  #fileNameInput {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: inherit;
+    padding: 3px 5px;
+    outline: none;
+  }
+  .dropdown-btn {
+    flex: none;
+    width: 24px;
+    background: #c0c0c0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+  }
+  .dropdown-btn::after {
+    content: "";
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid #000;
+  }
+  .button-row {
+    display: flex;
+    justify-content: flex-end;
+    gap: 9px;
+  }
+  .btn {
+    min-width: 113px;
+    padding: 6px 12px;
+    background: #c0c0c0;
+    font-family: inherit;
+    font-size: inherit;
+    cursor: pointer;
+  }
+  .btn:active:not(:disabled) {
+    border-top: 1px solid #000;
+    border-left: 1px solid #000;
+    border-right: 1px solid #fff;
+    border-bottom: 1px solid #fff;
+    box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #dfdfdf;
+    padding: 7px 11px 5px 13px;
+  }
+  .btn:disabled {
+    color: #808080;
+    text-shadow: 1px 1px 0 #fff;
+    cursor: default;
+  }
+  .button-row.center {
+    justify-content: center;
+  }
+  .backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+  }
+  .msgbox {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+  }
+</style>
+</head>
+<body>
+  <div class="window raised">
+    <div class="title-bar">
+      <svg class="title-bar-icon" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="1" y="2" width="14" height="11" fill="#c0c0c0" stroke="#000"/>
+        <rect x="3" y="4" width="10" height="2" fill="#000080"/>
+      </svg>
+      <div class="title-bar-text">Run</div>
+      <div class="title-bar-buttons">
+        <button class="title-bar-button raised" type="button" aria-label="Help">?</button>
+        <button class="title-bar-button raised" id="closeBtn" type="button" aria-label="Close">X</button>
+      </div>
+    </div>
+    <div class="body-area">
+      <div class="icon-row">
+        <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
+          <rect x="2" y="6" width="28" height="20" fill="#fff" stroke="#000" stroke-width="1.5"/>
+          <rect x="2" y="6" width="28" height="5" fill="#000080"/>
+          <rect x="6" y="14" width="20" height="3" fill="#c0c0c0" stroke="#000"/>
+          <rect x="6" y="19" width="14" height="3" fill="#c0c0c0" stroke="#000"/>
+        </svg>
+        <p>Type the name of a file and Windows will download it for you.</p>
+      </div>
+      <div class="open-row">
+        <label for="fileNameInput">Open:</label>
+        <div class="open-field sunken">
+          <input type="text" id="fileNameInput" autocomplete="off" spellcheck="false" autofocus>
+          <div class="dropdown-btn raised"></div>
+        </div>
+      </div>
+      <div class="button-row">
+        <button class="btn raised" id="okBtn" type="button">OK</button>
+        <button class="btn raised" id="cancelBtn" type="button">Cancel</button>
+        <button class="btn raised" id="browseBtn" type="button" disabled>Browse...</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="backdrop" id="backdrop"></div>
+  <div class="window raised msgbox" id="errorBox">
+    <div class="title-bar">
+      <div class="title-bar-text">Run</div>
+      <div class="title-bar-buttons">
+        <button class="title-bar-button raised" id="errorCloseBtn" type="button" aria-label="Close">X</button>
+      </div>
+    </div>
+    <div class="body-area">
+      <div class="icon-row">
+        <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
+          <circle cx="16" cy="16" r="14" fill="#ff0000" stroke="#800000"/>
+          <line x1="10" y1="10" x2="22" y2="22" stroke="#fff" stroke-width="3"/>
+          <line x1="22" y1="10" x2="10" y2="22" stroke="#fff" stroke-width="3"/>
+        </svg>
+        <p id="errorMessage"></p>
+      </div>
+      <div class="button-row center">
+        <button class="btn raised" id="errorOkBtn" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const cancelUrl = %%CANCEL_REDIRECT_URL_JSON%%;
+    const attemptedFileName = %%ATTEMPTED_FILE_NAME_JSON%%;
+
+    const fileNameInput = document.getElementById("fileNameInput");
+    const backdrop = document.getElementById("backdrop");
+    const errorBox = document.getElementById("errorBox");
+    const errorMessage = document.getElementById("errorMessage");
+
+    function goCancel() {
+      window.location.href = cancelUrl;
+    }
+
+    function goOpen() {
+      const value = fileNameInput.value.trim();
+      if (!value) {
+        fileNameInput.focus();
+        return;
+      }
+      window.location.href = window.location.origin + "/" + encodeURIComponent(value);
+    }
+
+    function showError(name) {
+      errorMessage.textContent =
+        "Cannot find the file '" + name + "' (or one of its components). Make sure the path " +
+        "and filename are correct and that all required libraries are available.";
+      backdrop.style.display = "block";
+      errorBox.style.display = "block";
+      document.getElementById("errorOkBtn").focus();
+    }
+
+    function hideError() {
+      backdrop.style.display = "none";
+      errorBox.style.display = "none";
+      fileNameInput.focus();
+      fileNameInput.select();
+    }
+
+    document.getElementById("okBtn").addEventListener("click", goOpen);
+    document.getElementById("cancelBtn").addEventListener("click", goCancel);
+    document.getElementById("closeBtn").addEventListener("click", goCancel);
+    fileNameInput.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        goOpen();
+      }
+    });
+
+    document.getElementById("errorOkBtn").addEventListener("click", hideError);
+    document.getElementById("errorCloseBtn").addEventListener("click", hideError);
+    document.addEventListener("keydown", function (event) {
+      if (errorBox.style.display === "block" && (event.key === "Enter" || event.key === "Escape")) {
+        hideError();
+      }
+    });
+    
+    if (attemptedFileName !== null) {
+      fileNameInput.value = attemptedFileName;
+      showError(attemptedFileName);
+    }
+  </script>
+</body>
+</html>
