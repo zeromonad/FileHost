@@ -293,7 +293,7 @@
   <div class="backdrop" id="backdrop"></div>
   <div class="window raised msgbox" id="errorBox">
     <div class="title-bar">
-      <div class="title-bar-text">Run</div>
+      <div class="title-bar-text">Not Found!</div>
       <div class="title-bar-buttons">
         <button class="title-bar-button raised" id="errorCloseBtn" type="button" aria-label="Close">X</button>
       </div>
@@ -442,8 +442,8 @@
 
     function showError(name) {
       errorMessage.textContent =
-        "Cannot find the file '" + name + "' (or one of its components). Make sure the path " +
-        "and filename are correct and that all required libraries are available.";
+        "Cannot find the file '" + name + "'. Make sure the path " +
+        "and filename are correct.";
       backdrop.style.display = "block";
       errorBox.style.display = "block";
       document.getElementById("errorOkBtn").focus();

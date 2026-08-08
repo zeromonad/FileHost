@@ -1,15 +1,49 @@
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.StaticFiles;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // No-op when run interactively (dotnet run / debugging); wires up ServiceBase + Event Log
 // logging when launched by the Service Control Manager.
 builder.Host.UseWindowsService();
+
+// Kestrel only ever sees connections from cloudflared over loopback (see CLAUDE.md/README), so
+// Connection.RemoteIpAddress is always 127.0.0.1 — useless as a per-visitor partition key. The
+// real client IP is CF-Connecting-IP, which Cloudflare's edge sets/overwrites itself and is not
+// something a client can forge — spoofing it would require reaching Kestrel directly, which the
+// loopback-only binding already rules out. Falls back to RemoteIpAddress so this still degrades
+// sanely (one shared bucket) if it's ever run without Cloudflare in front of it.
+string GetClientPartitionKey(HttpContext context) =>
+    context.Request.Headers["CF-Connecting-IP"].FirstOrDefault()
+        ?? context.Connection.RemoteIpAddress?.ToString()
+        ?? "unknown";
+
+// Global per-client throttle. This is defense-in-depth behind the edge-level rate limiting
+// already configured on the Cloudflare tunnel in front of this app — it protects the origin
+// directly (disk I/O from the subfolder/file-existence scan below) even if that edge protection
+// is ever bypassed, misconfigured, or the app ends up reachable some other way. 60 requests per
+// 10 seconds per client, with a small queue so a legitimate short burst (e.g. a browser firing
+// off several range requests for one big file) degrades gracefully instead of hard-rejecting.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: GetClientPartitionKey(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromSeconds(10),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 10
+            }));
+});
 
 // Folder to serve files from — required, no default, fail fast if missing.
 var fileRootSetting = builder.Configuration["FileHosting:FolderPath"]
@@ -34,6 +68,8 @@ var fileRootPrefix = fileRoot.EndsWith(Path.DirectorySeparatorChar)
 
 var app = builder.Build();
 
+app.UseRateLimiter();
+
 var contentTypeProvider = new FileExtensionContentTypeProvider();
 
 app.Logger.LogInformation("Serving files from {FileRoot}", fileRoot);
@@ -41,6 +77,30 @@ app.Logger.LogInformation("Serving files from {FileRoot}", fileRoot);
 // Belt-and-suspenders containment check in case of Combine/GetFullPath quirks.
 bool IsWithinRoot(string fullPath) =>
     fullPath.StartsWith(fileRootPrefix, StringComparison.OrdinalIgnoreCase);
+
+// The subfolder *list* is cached for a few seconds so a burst of misses (a scripted scan, or
+// just the rate limiter's queue draining) doesn't force a fresh directory enumeration on every
+// single request. File.Exists inside each subfolder still happens fresh every request below, so
+// a newly dropped file is still visible immediately — only a newly created/removed *subfolder*
+// can lag by up to this long, which is a rare, deliberate operation, not a "drop a file in" one.
+var subfolderCacheLock = new Lock();
+string[]? cachedSubfolders = null;
+var cachedSubfoldersAt = DateTime.MinValue;
+var subfolderCacheDuration = TimeSpan.FromSeconds(5);
+
+string[] GetSubfolders()
+{
+    lock (subfolderCacheLock)
+    {
+        var now = DateTime.UtcNow;
+        if (cachedSubfolders is null || now - cachedSubfoldersAt >= subfolderCacheDuration)
+        {
+            cachedSubfolders = Directory.GetDirectories(fileRoot);
+            cachedSubfoldersAt = now;
+        }
+        return cachedSubfolders;
+    }
+}
 
 IResult ServeFile(string fullPath, string downloadName)
 {
@@ -165,6 +225,16 @@ app.MapGet("/{fileName}", (string fileName, HttpContext context) =>
         return RenderNotFoundPage(fileName);
     }
 
+    // Defense-in-depth against response header injection: safeName ends up in the
+    // Content-Disposition header below (as the download filename), and ASP.NET Core's own
+    // header-value validation is what actually stops a CR/LF in there from splitting the
+    // response — this check means that protection doesn't have to be the only thing standing
+    // in the way. Rejected the same way as any other malformed name, not treated specially.
+    if (safeName.Any(char.IsControl))
+    {
+        return RenderNotFoundPage(fileName);
+    }
+
     // 1. Flat files directly in fileRoot: unchanged, zero-auth behavior. Checked first, so a
     //    name that happens to exist both flat and in a subfolder is always served unprotected
     //    from the flat copy.
@@ -174,9 +244,10 @@ app.MapGet("/{fileName}", (string fileName, HttpContext context) =>
         return ServeFile(flatPath, safeName);
     }
 
-    // 2. One level of subfolders: <fileRoot>\<password>\<file>. Scanned fresh every request —
-    //    no caching/indexing, matching the "drop a file in, it's live immediately" behavior.
-    foreach (var subfolder in Directory.GetDirectories(fileRoot))
+    // 2. One level of subfolders: <fileRoot>\<password>\<file>. The subfolder list itself is
+    //    briefly cached (see GetSubfolders above); each file's existence within it is still
+    //    checked fresh every request, so "drop a file in, it's live immediately" still holds.
+    foreach (var subfolder in GetSubfolders())
     {
         var candidatePath = Path.GetFullPath(Path.Combine(subfolder, safeName));
 
@@ -209,8 +280,10 @@ app.MapGet("/{fileName}", (string fileName, HttpContext context) =>
     return RenderNotFoundPage(safeName);
 });
 
-// Simple liveness check — hits "/status" which the filename route can't match on its own (empty segment).
-app.MapGet("/status", () => Results.Ok("File host is running."));
+// Simple liveness check — hits "/status" which the filename route can't match on its own (empty
+// segment). Exempted from the global rate limiter so external monitoring polling it isn't at
+// risk of getting throttled alongside everything else.
+app.MapGet("/status", () => Results.Ok("File host is running.")).DisableRateLimiting();
 
 // Catches everything no other endpoint matched: bare "/" (zero segments) and any multi-segment
 // path (e.g. "/a/b"), neither of which "/{fileName}" can match. Endpoint routing always ranks
