@@ -25,7 +25,10 @@ direct-download link.
   ![Example front end: a Windows "Run..." dialog reading "Type the name of a file and Windows will open it for you", with an Open field and OK/Cancel/Browse buttons](docs/run-dialog.png)
 
   Typing a filename into the box and hitting OK requests that file from the server; a name
-  that doesn't resolve pops the classic "Cannot find the file" error on top of it.
+  that doesn't resolve pops the classic "Cannot find the file" error on top of it. Cancel and
+  the title bar's X just clear the input box. The dropdown caret next to the input recalls the
+  last 5 filenames that were successfully downloaded (kept in the browser's `localStorage`,
+  per-browser — nothing is sent to or stored on the server).
 
 ## How it works
 
@@ -50,8 +53,7 @@ Settings live in `appsettings.json` (or the equivalent environment variables, e.
     }
   },
   "FileHosting": {
-    "FolderPath": "..\\Files",
-    "CancelRedirectUrl": "https://example.com"
+    "FolderPath": "..\\Files"
   }
 }
 ```
@@ -59,8 +61,6 @@ Settings live in `appsettings.json` (or the equivalent environment variables, e.
 - **`FileHosting:FolderPath`** — required, no default. The folder to serve files from. A
   relative path is resolved against the app's own directory, not the working directory it
   happens to be launched from. The app fails fast at startup if this doesn't exist.
-- **`FileHosting:CancelRedirectUrl`** — optional. Where Cancel/X on the landing page sends
-  visitors. Falls back to `/` (the page just links to itself) if unset.
 
 To password-protect a file, drop it into a subfolder of the configured folder instead of
 directly in it — e.g. `Files\SomePassword\shared.zip`. The link is unchanged

@@ -21,6 +21,12 @@
     <EmbeddedResource Include="index.html">
       <LogicalName>index.html</LogicalName>
     </EmbeddedResource>
+    <!-- Same reasoning: the page's logo, inlined as a data URI at startup (see Program.cs)
+         instead of served from its own route, so it can't collide with a real hosted file
+         that happens to be named logo.png. -->
+    <EmbeddedResource Include="logo.png">
+      <LogicalName>logo.png</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>

@@ -10,13 +10,14 @@
   html, body {
     margin: 0;
     height: 100%;
-    background: #000;
+    background: #008080;
   }
   body {
     display: flex;
     align-items: center;
     justify-content: center;
     min-height: 100vh;
+    padding-bottom: 30px;
     font-family: Tahoma, "MS Sans Serif", sans-serif;
     font-size: 16.5px;
     color: #000;
@@ -55,6 +56,7 @@
     height: 21px;
     margin-right: 6px;
     flex: none;
+    object-fit: contain;
   }
   .title-bar-text {
     flex: 1;
@@ -86,13 +88,15 @@
   }
   .icon-row {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 15px;
     margin-bottom: 18px;
   }
-  .icon-row svg {
+  .icon-row svg,
+  .icon-row img {
     flex: none;
     margin-top: 3px;
+    object-fit: contain;
   }
   .icon-row p {
     margin: 0;
@@ -108,6 +112,7 @@
     flex: none;
   }
   .open-field {
+    position: relative;
     flex: 1;
     display: flex;
     background: #fff;
@@ -136,6 +141,36 @@
     border-left: 6px solid transparent;
     border-right: 6px solid transparent;
     border-top: 6px solid #000;
+  }
+  .recent-list {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    z-index: 20;
+    max-height: 112px;
+    overflow-y: auto;
+  }
+  .recent-list.open {
+    display: block;
+  }
+  .recent-item {
+    padding: 3px 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+  }
+  .recent-item:hover {
+    background: #000080;
+    color: #fff;
+  }
+  .recent-empty {
+    padding: 3px 6px;
+    color: #808080;
+    font-style: italic;
   }
   .button-row {
     display: flex;
@@ -180,15 +215,54 @@
     transform: translate(-50%, -50%);
     z-index: 10;
   }
+  .taskbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3px;
+    background: #c0c0c0;
+    border-top: 1px solid #dfdfdf;
+    box-shadow: inset 0 1px 0 #fff;
+    z-index: 50;
+  }
+  .tray {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .start-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 100%;
+    padding: 0 8px;
+    background: #c0c0c0;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .start-btn:active {
+    border-top: 1px solid #000;
+    border-left: 1px solid #000;
+    border-right: 1px solid #fff;
+    border-bottom: 1px solid #fff;
+    box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #dfdfdf;
+  }
 </style>
 </head>
 <body>
   <div class="window raised">
     <div class="title-bar">
-      <svg class="title-bar-icon" viewBox="0 0 16 16" aria-hidden="true">
-        <rect x="1" y="2" width="14" height="11" fill="#c0c0c0" stroke="#000"/>
-        <rect x="3" y="4" width="10" height="2" fill="#000080"/>
-      </svg>
+      <img class="title-bar-icon" src="%%LOGO_DATA_URI%%" width="21" height="21" alt="" aria-hidden="true">
       <div class="title-bar-text">Run</div>
       <div class="title-bar-buttons">
         <button class="title-bar-button raised" type="button" aria-label="Help">?</button>
@@ -197,19 +271,15 @@
     </div>
     <div class="body-area">
       <div class="icon-row">
-        <svg width="48" height="48" viewBox="0 0 32 32" aria-hidden="true">
-          <rect x="2" y="6" width="28" height="20" fill="#fff" stroke="#000" stroke-width="1.5"/>
-          <rect x="2" y="6" width="28" height="5" fill="#000080"/>
-          <rect x="6" y="14" width="20" height="3" fill="#c0c0c0" stroke="#000"/>
-          <rect x="6" y="19" width="14" height="3" fill="#c0c0c0" stroke="#000"/>
-        </svg>
+        <img src="%%LOGO_DATA_URI%%" width="48" height="48" alt="" aria-hidden="true">
         <p>Type the name of a file and Windows will download it for you.</p>
       </div>
       <div class="open-row">
         <label for="fileNameInput">Open:</label>
         <div class="open-field sunken">
           <input type="text" id="fileNameInput" autocomplete="off" spellcheck="false" autofocus>
-          <div class="dropdown-btn raised"></div>
+          <div class="dropdown-btn raised" id="dropdownBtn" role="button" aria-label="Recent downloads"></div>
+          <div class="recent-list sunken" id="recentList" role="listbox" aria-label="Recent downloads"></div>
         </div>
       </div>
       <div class="button-row">
@@ -243,17 +313,121 @@
     </div>
   </div>
 
+  <div class="taskbar">
+    <button class="start-btn raised" type="button">
+      <img src="%%LOGO_DATA_URI%%" width="16" height="16" alt="" aria-hidden="true">
+      <span>Start</span>
+    </button>
+    <div class="tray sunken" id="taskbarClock"></div>
+  </div>
+
   <script>
-    const cancelUrl = %%CANCEL_REDIRECT_URL_JSON%%;
     const attemptedFileName = %%ATTEMPTED_FILE_NAME_JSON%%;
 
     const fileNameInput = document.getElementById("fileNameInput");
     const backdrop = document.getElementById("backdrop");
     const errorBox = document.getElementById("errorBox");
     const errorMessage = document.getElementById("errorMessage");
+    const dropdownBtn = document.getElementById("dropdownBtn");
+    const recentList = document.getElementById("recentList");
+    const taskbarClock = document.getElementById("taskbarClock");
 
-    function goCancel() {
-      window.location.href = cancelUrl;
+    // Classic tray clock — reads the browser's local time, so it's whatever the visitor's own
+    // machine is set to (same as the real Windows 95 tray clock reading the local system clock).
+    function updateClock() {
+      const now = new Date();
+      let hours = now.getHours();
+      const ampm = hours >= 12 ? "PM" : "AM";
+      hours = hours % 12 || 12;
+      const minutes = String(now.getMinutes()).padStart(2, "0");
+      taskbarClock.textContent = hours + ":" + minutes + " " + ampm;
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+
+    // Remembers the last few filenames that were actually served, in localStorage so it
+    // survives across visits. Entries are added optimistically when OK is pressed and rolled
+    // back if that lookup turns out to 404 (see the attemptedFileName handling below) — so
+    // this only ever reflects names that were *found*, not every name that was ever typed.
+    const RECENT_KEY = "fileHostRecentDownloads";
+    const RECENT_MAX = 5;
+
+    function getRecent() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+        return Array.isArray(parsed) ? parsed.filter(function (item) { return typeof item === "string" && item; }) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function setRecent(list) {
+      try {
+        localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+      } catch (e) {
+        // localStorage unavailable (private browsing, quota, disabled) — memory just won't persist.
+      }
+    }
+
+    function addRecent(name) {
+      const list = getRecent().filter(function (item) { return item !== name; });
+      list.unshift(name);
+      setRecent(list.slice(0, RECENT_MAX));
+    }
+
+    function removeRecent(name) {
+      setRecent(getRecent().filter(function (item) { return item !== name; }));
+    }
+
+    function renderRecentList() {
+      const items = getRecent();
+      recentList.innerHTML = "";
+      if (items.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "recent-empty";
+        empty.textContent = "(no recent downloads)";
+        recentList.appendChild(empty);
+        return;
+      }
+      items.forEach(function (name) {
+        const row = document.createElement("div");
+        row.className = "recent-item";
+        row.textContent = name;
+        row.setAttribute("role", "option");
+        row.addEventListener("click", function () {
+          fileNameInput.value = name;
+          closeRecentList();
+          fileNameInput.focus();
+        });
+        recentList.appendChild(row);
+      });
+    }
+
+    function openRecentList() {
+      renderRecentList();
+      recentList.classList.add("open");
+    }
+
+    function closeRecentList() {
+      recentList.classList.remove("open");
+    }
+
+    function toggleRecentList() {
+      if (recentList.classList.contains("open")) {
+        closeRecentList();
+      } else {
+        openRecentList();
+      }
+    }
+
+    function clearInput() {
+      fileNameInput.value = "";
+      closeRecentList();
+      if (errorBox.style.display === "block") {
+        hideError();
+      } else {
+        fileNameInput.focus();
+      }
     }
 
     function goOpen() {
@@ -262,6 +436,7 @@
         fileNameInput.focus();
         return;
       }
+      addRecent(value);
       window.location.href = window.location.origin + "/" + encodeURIComponent(value);
     }
 
@@ -282,23 +457,37 @@
     }
 
     document.getElementById("okBtn").addEventListener("click", goOpen);
-    document.getElementById("cancelBtn").addEventListener("click", goCancel);
-    document.getElementById("closeBtn").addEventListener("click", goCancel);
+    document.getElementById("cancelBtn").addEventListener("click", clearInput);
+    document.getElementById("closeBtn").addEventListener("click", clearInput);
     fileNameInput.addEventListener("keydown", function (event) {
       if (event.key === "Enter") {
         goOpen();
       }
     });
 
+    dropdownBtn.addEventListener("click", function (event) {
+      event.stopPropagation();
+      toggleRecentList();
+    });
+    document.addEventListener("click", function (event) {
+      if (!recentList.contains(event.target) && event.target !== dropdownBtn) {
+        closeRecentList();
+      }
+    });
+
     document.getElementById("errorOkBtn").addEventListener("click", hideError);
     document.getElementById("errorCloseBtn").addEventListener("click", hideError);
     document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") {
+        closeRecentList();
+      }
       if (errorBox.style.display === "block" && (event.key === "Enter" || event.key === "Escape")) {
         hideError();
       }
     });
-    
+
     if (attemptedFileName !== null) {
+      removeRecent(attemptedFileName);
       fileNameInput.value = attemptedFileName;
       showError(attemptedFileName);
     }

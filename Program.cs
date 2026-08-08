@@ -26,10 +26,6 @@ if (!Directory.Exists(fileRoot))
     throw new DirectoryNotFoundException($"FileHosting:FolderPath does not exist: {fileRoot}");
 }
 
-// Where Cancel/X on the "no file found" page send visitors — cosmetic, so unlike FolderPath
-// this isn't fail-fast; a missing value just falls back to "/" (the dialog links to itself).
-var cancelRedirectUrlSetting = builder.Configuration["FileHosting:CancelRedirectUrl"];
-
 // Trailing separator so the StartsWith containment check below can't be fooled by a
 // sibling folder that merely shares the same prefix (e.g. C:\Files vs C:\Files-Other).
 var fileRootPrefix = fileRoot.EndsWith(Path.DirectorySeparatorChar)
@@ -41,12 +37,6 @@ var app = builder.Build();
 var contentTypeProvider = new FileExtensionContentTypeProvider();
 
 app.Logger.LogInformation("Serving files from {FileRoot}", fileRoot);
-
-var cancelRedirectUrl = string.IsNullOrWhiteSpace(cancelRedirectUrlSetting) ? "/" : cancelRedirectUrlSetting;
-if (string.IsNullOrWhiteSpace(cancelRedirectUrlSetting))
-{
-    app.Logger.LogInformation("FileHosting:CancelRedirectUrl not configured; Cancel/X will redirect to \"/\".");
-}
 
 // Belt-and-suspenders containment check in case of Combine/GetFullPath quirks.
 bool IsWithinRoot(string fullPath) =>
@@ -117,10 +107,16 @@ IResult ChallengeBasicAuth(HttpContext context)
 // "Run..." dialog pastiche instead of a blank 404. Markup/CSS/JS lives in index.html,
 // compiled into the DLL as an embedded resource (see FileHost.csproj) so it ships with the
 // assembly and can't go missing from a deployment. Two tokens in that file are substituted
-// server-side, always inside a <script> block only — never into markup or an attribute — using
-// JsonSerializer.Serialize so each arrives as a properly quoted/escaped JS literal:
-//   %%CANCEL_REDIRECT_URL_JSON%%    — fixed per config, substituted once at startup below.
-//   %%ATTEMPTED_FILE_NAME_JSON%%    — varies per request, substituted in RenderNotFoundPage.
+// server-side:
+//   %%LOGO_DATA_URI%%               — fixed asset, substituted once at startup below, into an
+//                                      <img src> attribute. Safe there (unlike the token below)
+//                                      because it's built from a local embedded file, never
+//                                      from request input, and a base64 data URI can't contain
+//                                      a quote or angle bracket to break out of the attribute.
+//   %%ATTEMPTED_FILE_NAME_JSON%%    — varies per request, substituted in RenderNotFoundPage,
+//                                      always inside a <script> block only — never into markup
+//                                      or an attribute — using JsonSerializer.Serialize so it
+//                                      arrives as a properly quoted/escaped JS literal.
 string ReadEmbeddedNotFoundPageTemplate()
 {
     using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("index.html")
@@ -129,10 +125,19 @@ string ReadEmbeddedNotFoundPageTemplate()
     return reader.ReadToEnd();
 }
 
+string ReadEmbeddedLogoDataUri()
+{
+    using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("logo.png")
+        ?? throw new InvalidOperationException("Embedded resource logo.png not found.");
+    using var memoryStream = new MemoryStream();
+    stream.CopyTo(memoryStream);
+    return "data:image/png;base64," + Convert.ToBase64String(memoryStream.ToArray());
+}
+
 // Built once at startup — only the per-request token is left to fill in on each call below.
 var notFoundHtmlTemplate = ReadEmbeddedNotFoundPageTemplate().Replace(
-    "%%CANCEL_REDIRECT_URL_JSON%%",
-    JsonSerializer.Serialize(cancelRedirectUrl));
+    "%%LOGO_DATA_URI%%",
+    ReadEmbeddedLogoDataUri());
 
 // attemptedFileName is null for "/" and other routes with nothing specific to look up (the page
 // just shows the plain Run dialog); when set (a real filename lookup that came back empty), the
